@@ -1,0 +1,41 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-telemetry}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-telemetry}
+      POSTGRES_DB: ${POSTGRES_DB:-telemetry}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  api:
+    build: .
+    image: telemetry-api:local
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-telemetry}:${POSTGRES_PASSWORD:-telemetry}@db:5432/${POSTGRES_DB:-telemetry}
+      LOG_LEVEL: INFO
+      APP_VERSION: local
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy   # don't start until Postgres actually accepts connections
+    restart: unless-stopped
+
+  simulator:
+    build: ./simulator
+    environment:
+      API_URL: http://api:8000
+      MACHINES: cnc-01,cnc-02,cnc-03
+      INTERVAL_SECONDS: "2"
+    depends_on:
+      - api
+    restart: unless-stopped
+
+volumes:
+  pgdata:
